@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Mountain RPG - ポモドーロで集中力を鍛えよう</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background-color: #f0f7ff;
+            transition: background-color 0.5s;
+        }
+        .mountain-bg {
+            background-image: url('assets/images/mountain-bg.svg');
+            background-size: cover;
+            background-position: bottom;
+            transition: all 0.5s;
+        }
+        .progress-bar {
+            height: 10px;
+            background: linear-gradient(90deg, #4f46e5 0%, #818cf8 100%);
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+        .timer-circle {
+            width: 250px;
+            height: 250px;
+            border: 10px solid #e0e7ff;
+            border-radius: 50%;
+            position: relative;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .timer-circle.working { border-color: #4f46e5; }
+        .timer-circle.break { border-color: #10b981; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <div x-data="app" x-init="init()" class="flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-sm py-4 px-6">
+            <div class="max-w-4xl mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-indigo-600">Focus Mountain RPG</h1>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <div class="font-medium">Lv.<span x-text="level">1</span></div>
+                        <div class="text-sm text-gray-500"><span x-text="xp">0</span>/<span x-text="nextLevelXp">100</span> XP</div>
+                    </div>
+                    <div class="w-24 bg-gray-200 rounded-full h-2.5">
+                        <div class="progress-bar h-2.5 rounded-full" 
+                             :style="`width: ${(xp / nextLevelXp) * 100}%`"></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col items-center justify-center p-6">
+            <!-- Timer -->
+            <div class="relative mb-12">
+                <div class="timer-circle flex items-center justify-center" 
+                     :class="{'working': isWorking, 'break': !isWorking}">
+                    <div class="text-center">
+                        <div class="text-5xl font-bold text-gray-800" x-text="formatTime(timeLeft)">25:00</div>
+                        <div class="mt-2 text-lg font-medium" x-text="isWorking ? '集中モード' : '休憩タイム'"></div>
+                    </div>
+                </div>
+                
+                <!-- Controls -->
+                <div class="flex justify-center mt-8 space-x-4">
+                    <button @click="startTimer()" 
+                            class="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                            x-text="isRunning ? 'ポーズ' : 'スタート'">
+                    </button>
+                    <button @click="resetTimer()" 
+                            class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors">
+                        リセット
+                    </button>
+                </div>
+            </div>
+
+
+            <!-- Focus Level -->
+            <div class="mt-8 w-full max-w-md">
+                <h3 class="text-lg font-medium text-center mb-4">集中度を評価してください</h3>
+                <div class="flex justify-between mb-2">
+                    <span class="text-sm text-gray-500">低い</span>
+                    <span class="text-sm text-gray-500">高い</span>
+                </div>
+                <div class="flex justify-between">
+                    <template x-for="i in 5" :key="i">
+                        <button @click="setFocusLevel(i)" 
+                                class="w-12 h-12 rounded-full flex items-center justify-center text-xl"
+                                :class="{'bg-indigo-100 text-indigo-600': focusLevel >= i, 'bg-gray-100 text-gray-400': focusLevel < i}">
+                            <span x-text="i"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </main>
+
+
+        <!-- Footer -->
+        <footer class="bg-white border-t py-4 px-6">
+            <div class="max-w-4xl mx-auto flex justify-between items-center text-sm text-gray-500">
+                <div>ポモドーロ: <span x-text="pomodoroCount">0</span> / 4</div>
+                <div>連続記録: <span x-text="combo">0</span> 日</div>
+                <div>今日のクエスト: <span x-text="dailyQuest?.title || '---'"></span></div>
+            </div>
+        </footer>
+
+        <!-- Settings Modal -->
+        <div x-show="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" @click.self="showSettings = false">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md">
+                <h2 class="text-xl font-bold mb-4">設定</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">作業時間 (分)</label>
+                        <input type="number" x-model.number="workDuration" class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">休憩時間 (分)</label>
+                        <input type="number" x-model.number="breakDuration" class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">長い休憩 (分)</label>
+                        <input type="number" x-model.number="longBreakDuration" class="w-full p-2 border rounded">
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button @click="showSettings = false" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">
+                        キャンセル
+                    </button>
+                    <button @click="saveSettings()" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                        保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/main.js"></script>
+    <script>
+        // Simple initialization
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('app', window.app);
+        });
+        
+        // Debug timer
+        setInterval(() => {
+            const timer = document.querySelector('.timer-circle');
+            if (timer) {
+                const timeDisplay = timer.querySelector('.text-5xl');
+                if (timeDisplay) {
+                    console.log('Current time display:', timeDisplay.textContent);
+                }
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
